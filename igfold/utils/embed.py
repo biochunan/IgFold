@@ -23,14 +23,14 @@ def embed(
         ignore_cdrs=ignore_cdrs,
         ignore_chain=ignore_chain,
     )
-    model_in = IgFoldInput(
+    model_in = IgFoldInput(  # at this poit, sequences are still str
         sequences=seq_dict.values(),
         template_coords=temp_coords,
         template_mask=temp_mask,
         return_embeddings=True,
     )
 
-    model_out = model(model_in)
+    model_out = model(model_in)  # model -> igfold/model/IgFold.py:21
 
     prmsd = rearrange(
         model_out.prmsd,

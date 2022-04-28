@@ -144,13 +144,18 @@ class IgFold(pl.LightningModule):
             tokens,
             output_hidden_states=True,
             output_attentions=True,
-        )
+        )  # => transformers.modeling_outputs.BaseModelOutputWithPoolingAndCrossAttentions
 
-        feats = bert_output.hidden_states[-1]
-        feats = feats[:, 1:-1]
+        feats = bert_output.hidden_states[-1]  # shape: torch.Size([1, 124, 512]) where 124 is chain H length
+        feats = feats[:, 1:-1]  # exclude features for CLS and SEP token at the beginning and end respectively
 
+        """
+        bert_output.attentions: 8-element tuple - AntiBERTy has 8 layers  
+                                each element shape (1, 8, L, L) - each layer has 8 attention heads  
+                                (L, L) - self-attention 
+        """
         attn = torch.cat(
-            bert_output.attentions,
+            bert_output.attentions,  # tuple(torch.Tensor)
             dim=1,
         )
         attn = attn[:, :, 1:-1, 1:-1]
@@ -169,7 +174,7 @@ class IgFold(pl.LightningModule):
         batch_size,
         seq_len,
         center=True,
-    ):
+    ) -> Tuple[IgFoldInput, int, List[int], int]:
         res_coords = rearrange(
             temp_coords,
             "b (l a) d -> b l a d",
@@ -205,7 +210,7 @@ class IgFold(pl.LightningModule):
         align_mask = input.align_mask
 
         batch_size = tokens[0].shape[0]
-        seq_lens = [max(t.shape[1] - 2, 0) for t in tokens]
+        seq_lens = [max(t.shape[1] - 2, 0) for t in tokens]  # minus 2 (CLS and SEP tokens)
         seq_len = sum(seq_lens)
 
         if not exists(temp_coords):
@@ -218,7 +223,7 @@ class IgFold(pl.LightningModule):
         if not exists(temp_mask):
             temp_mask = torch.zeros(
                 batch_size,
-                4 * seq_len,
+                4 * seq_len,  # why times 4? because backbone atoms: N, Ca, C, O atoms?
                 device=self.device,
             ).bool()
         if not exists(batch_mask):
@@ -239,14 +244,14 @@ class IgFold(pl.LightningModule):
         for i, (tc, m) in enumerate(zip(temp_coords, temp_mask)):
             temp_coords[i][m] -= tc[m].mean(-2)
 
-        input.sequences = tokens
-        input.template_coords = temp_coords
+        input.sequences = tokens  # str seq -> numeric tokens
+        input.template_coords = temp_coords  # if no template provided,
         input.template_mask = temp_mask
         input.batch_mask = batch_mask
         input.align_mask = align_mask
 
-        batch_size = tokens[0].shape[0]
-        seq_lens = [max(t.shape[1] - 2, 0) for t in tokens]
+        batch_size = tokens[0].shape[0]  # => 1
+        seq_lens = [max(t.shape[1] - 2, 0) for t in tokens]  # chain seq length, minus 2 due to the CLS and SEP tokens
         seq_len = sum(seq_lens)
 
         return input, batch_size, seq_lens, seq_len
@@ -278,7 +283,7 @@ class IgFold(pl.LightningModule):
         ### Model forward pass
 
         bert_feats, bert_attns, bert_hidden = [], [], []
-        for t in tokens:
+        for t in tokens:  # loop tokenised sequence
             f, a, h = self.get_bert_feats(t)
             bert_feats.append(f)
             bert_attns.append(a)
